@@ -21,6 +21,8 @@ import android.view.WindowManager.LayoutParams as LP
 import android.widget.ImageView
 import android.widget.Toast
 import kotlin.math.abs
+import kotlin.math.PI
+import kotlin.math.sin
 
 // A harmless prank: Teds bounce around the screen and you pop them by tapping.
 // It never starts on its own, never hides, and always stops itself.
@@ -32,7 +34,14 @@ class PrankService : Service() {
     ) {
         var hp = 1
         var dying = false
+        var hitUntil = 0L                       // pause the pulse while the hit-squish plays
+        val phase = (0..628).random() / 100f    // so every Ted dances a little differently
+        val spinDir = if ((0..1).random() == 0) 1f else -1f
     }
+
+    // Dance settings. Change BPM to match your song.
+    private val BPM = 102f
+    private val SPIN_DEG_PER_SEC = 220f
 
     private lateinit var wm: WindowManager
     private val ui = Handler(Looper.getMainLooper())
@@ -78,6 +87,8 @@ class PrankService : Service() {
         val iv = ImageView(this).apply {
             setImageResource(R.drawable.jk_ted)
             scaleType = ImageView.ScaleType.FIT_CENTER
+            val p = (size * 0.15f).toInt()      // keeps the corners inside the window while spinning
+            setPadding(p, p, p, p)
         }
         val lp = LP(
             size, size, LP.TYPE_APPLICATION_OVERLAY,
@@ -104,8 +115,27 @@ class PrankService : Service() {
                 if (t.y < 0f) { t.y = 0f; t.vy = abs(t.vy) } else if (t.y > maxY) { t.y = maxY; t.vy = -abs(t.vy) }
                 t.lp.x = t.x.toInt(); t.lp.y = t.y.toInt()
                 try { wm.updateViewLayout(t.view, t.lp) } catch (e: Exception) { }
+                dance(t)
             }
             ui.postDelayed(this, 16)
+        }
+    }
+
+    // Spin constantly, wobble side to side, bob up and down and pulse on the beat.
+    private fun dance(t: Ted) {
+        if (t.dying) return
+        val now = SystemClock.elapsedRealtime()
+        val sec = (music?.currentPosition?.toLong() ?: (now - startTime)) / 1000f
+        val beat = sec * BPM / 60f                                  // beats since the song started
+        val b = (beat + t.phase / (2 * PI.toFloat())) % 1f           // 0..1 inside the current beat
+        val v = t.view
+        v.rotation = (now - startTime) / 1000f * SPIN_DEG_PER_SEC * t.spinDir * (if (bossPhase) 1.6f else 1f) +
+            18f * sin(beat * PI.toFloat() * 2f + t.phase)           // spin plus a wiggle
+        v.translationY = -dp(10) * sin(beat * PI.toFloat() * 2f + t.phase).let { abs(it) } // hop on the beat
+        v.translationX = dp(6) * sin(beat * PI.toFloat() + t.phase)  // sway
+        if (now >= t.hitUntil) {
+            val pulse = 1f + 0.18f * (1f - b) * (1f - b)             // quick pop on each beat, then relax
+            v.scaleX = pulse; v.scaleY = pulse
         }
     }
 
@@ -114,6 +144,7 @@ class PrankService : Service() {
         t.hp--
         if (t.hp > 0) {                                   // the last one takes a few hits
             t.vx *= 1.25f; t.vy *= 1.25f
+            t.hitUntil = SystemClock.elapsedRealtime() + 180
             t.view.animate().scaleX(0.75f).scaleY(0.75f).setDuration(80).withEndAction {
                 t.view.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
             }.start()
@@ -138,6 +169,7 @@ class PrankService : Service() {
         bossPhase = true
         t.hp = 3
         t.lp.width = dp(130); t.lp.height = dp(130)
+        val bp = (dp(130) * 0.15f).toInt(); t.view.setPadding(bp, bp, bp, bp)
         t.vx *= 1.4f; t.vy *= 1.4f
         Toast.makeText(this, "Last one. It takes 3 hits.", Toast.LENGTH_SHORT).show()
     }

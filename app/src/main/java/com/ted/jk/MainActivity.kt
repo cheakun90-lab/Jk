@@ -23,7 +23,14 @@ class MainActivity : Activity() {
         }
         val img = ImageView(this).apply {
             setImageResource(R.drawable.jk_ted)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (150 * d).toInt())
+            layoutParams = LinearLayout.LayoutParams((150 * d).toInt(), (150 * d).toInt()).apply { gravity = android.view.Gravity.CENTER_HORIZONTAL }
+        }
+        // the title picture dances too
+        img.post {
+            img.animate().rotationBy(360f).setDuration(2500).setInterpolator(android.view.animation.LinearInterpolator())
+                .withEndAction(object : Runnable {
+                    override fun run() { img.rotation = 0f; img.animate().rotationBy(360f).setDuration(2500).withEndAction(this).start() }
+                }).start()
         }
         val title = TextView(this).apply { text = "JK Ted"; textSize = 26f }
         val about = TextView(this).apply {
